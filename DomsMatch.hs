@@ -1,6 +1,6 @@
-{- 
+{-
    DomsMatch: code to play a dominoes match between two players.
-   
+
    The top level function is domsMatch - it takes five arguments:
        games - the number of games to play
        target - the target score to reach
@@ -17,19 +17,47 @@
 
    Stub with types provided by Emma Norling (October 2023).
 
-   You should add your functions and any additional types that you require to your own copy of
-   this file. Before you submit, make sure you update this header documentation to remove these
-   instructions and replace them with authorship details and a brief summary of the file contents.
+   Author: Nur Izfarwiza Binti Mohd Talib
+   Date: 20 November 2023
+   Description:
+   Brief Summary of The File Contents:
+   1. Scoring Functions:
+      scoreBoard: Computes the score for a given board and a boolean indicating if it's the last domino.
+      isDouble: Checks if a given domino is a double.
+      calculateScore: Assigns scores according to specific conditions.
+      Game Logic Functions:
+  2. Game Logic Functio
+      blocked: Checks if there is nothing to play in the hand.
+      canPlay: Checks if a domino can be played on the board.
+      playDom: Plays a domino at a specified end if possible.
 
-   Similarly, remember you will be assessed not *just* on correctness, but also code style,
-   including (but not limited to) sensible naming, good functional decomposition, good layout,
-   and good comments.
+  3. Player Strategies:
+      simplePlayer: Chooses the first valid move from the hand that can be played on the board.
+      smartPlayer: Determines the next move based on the current state, considering a special case.
+      regularMoveStrategy: Filters possible moves and chooses the best move based on scoring strategy.
+
+  4. Scoring Strategy Functions:
+      findBestMove: Recursively searches through possible moves to find the move resulting in the highest score.
+      listDomino: Generates a list of possible domino moves.
+      playDominoAtBestEnd: Determines the end of the board to play the domino based on scoring strategy.
+      findHighestScoreDomino: Recursively searches through a list of dominoes to find the highest-scoring domino
+
+
+  5. Helper Functions:
+      updatePipCountLeft, updatePipCountRight: Updates the pip count for the left/right side of the board.
+      isMultThreeFive: Checks if a move is a multiple of 3 or 5.
+      calculateTotalPip: Calculates the new score for the player after playing a given move
+
+  6. Utility Functions:
+      swapDomino: Swaps the elements of a tuple, flipping a domino to be played.
+
  -}
-
 module DomsMatch where
-    import System.Random
+
     import Data.List
     import Data.Ord (comparing)
+    import System.Random
+    import Debug.Trace
 
 
     -- types used in this module
@@ -103,7 +131,7 @@ module DomsMatch where
           playGame' p1 p2 firstPlayer gen (s1, s2)
             | s1 == target = P1
             | s2 == target = P2
-            | otherwise   
+            | otherwise
                 = let
                       newScores = playDomsRound handSize target p1 p2 firstPlayer currentG (s1, s2)
                       (currentG, nextG) = split gen
@@ -140,9 +168,9 @@ module DomsMatch where
                   | turn == P2 = p2 hand2 board turn (score1, score2)
                                      -- attempt to play this move
               maybeBoard             -- try to play domino at end as returned by the player
-                  | turn == P1 && not (elem domino hand1) = Nothing -- can't play a domino you don't have!
-                  | turn == P2 && not (elem domino hand2) = Nothing
-                  | otherwise = playDom turn domino board end -- $Recursively calls playDom to make a move$
+                  | turn == P1 && not (domInHand domino hand1) = Nothing -- can't play a domino you don't have!
+                  | turn == P2 && not (domInHand domino hand2) = Nothing
+                  | otherwise = playDom turn domino board end
               newGameState           -- if successful update board state (exit with error otherwise)
                  | maybeBoard == Nothing = error ("Player " ++ show turn ++ " attempted to play an invalid move.")
                  | otherwise             = (newHand1, newHand2, newBoard,
@@ -159,24 +187,39 @@ module DomsMatch where
                  | otherwise    = new
               Just newBoard = maybeBoard -- extract the new board from the Maybe type
 
-    scoreBoard :: Board -> Bool -> Int
-    scoreBoard InitState _ = 0  -- Initial state has a score of 0
-    scoreBoard (State (l1, r1) ( l2,r2 )) isLastDomino target
-        | isLastDomino = chippingOutScore l1 r2
-        | otherwise    = calculateScore l1 + calculateScore r2
+    {- domInHand: check if a particular domino is contained within a hand -}
+    domInHand :: Domino -> Hand -> Bool
+    domInHand (l,r) hand = [ 1 | (dl, dr) <- hand, (dl == l && dr == r) || (dr == l && dl == r) ] /= []
 
-    {-Handles when the score exceeds the targets-}
-    chippingOutScore :: Int -> Int -> Int -> Int
-    chippingOutScore l1 r2 target
-        | totalScore <= target = totalScore
-        | otherwise            = target
-        where
-            totalScore = calculateScore l1 + calculateScore r2
-    
-    {-Checks if the current state represents the last domino in the game-}
-    isLastDomino :: Board -> Int -> Bool
-    isLastDomino (State _ _ history) handSize = null history && handSize == 0
-    isLastDomino _ _ = False  -- Assume it's not the last domino in other cases
+    {-
+      scoreBoard: Calculates the score of the current board state.
+      Takes a Board, a flag indicating if it's the last domino, and returns an Int representing the score.
+      Input:
+        - Board: Current state of the game board.
+        - Bool: indicating if it's the last domino.
+      Output:
+        - Int: The calculated score.
+    -}
+    scoreBoard :: Board -> Bool -> Int
+    scoreBoard InitState _ = 0 -- Initial state has a score of 0
+    scoreBoard (State dom1 dom2 _) isLastDomino
+      | isDouble dom2 && isDouble dom1 && isLastDomino = calculateScore (uncurry (+) dom1 + fst dom2 + snd dom2) + 1
+      | isDouble dom2 && isDouble dom1 = calculateScore (uncurry (+) dom1 + fst dom2 + snd dom2) -- if both side doubles
+      | isDouble dom2 && isLastDomino = calculateScore (uncurry (+) dom2 + fst dom1) + 1 -- Right is double and last
+      | isDouble dom2 = calculateScore (fst dom1 + snd dom2)
+      | isDouble dom1 && isLastDomino = calculateScore (uncurry (+) dom1 + snd dom2) + 1 -- Left domino is double and last
+      | isDouble dom1 = calculateScore (fst dom1 + snd dom2 + snd dom1)
+      | isLastDomino = calculateScore (fst dom1 + snd dom2) + 1
+      | otherwise = calculateScore (fst dom1 + snd dom2)
+
+    {- check if the remaining hand contains exactly one domino-}
+    isLastDomino :: Hand -> Bool
+    isLastDomino [] = True
+    isLastDomino hands = length hands == 1
+
+    {-Check if the domino just played is a double-}
+    isDouble :: Domino -> Bool
+    isDouble (x, y) = x == y
 
     {-Assigns scores according to the conditions-}
     calculateScore :: Int -> Int
@@ -192,38 +235,222 @@ module DomsMatch where
       | n == 20 = 4
       | otherwise = 0
 
-
+    {-
+      blocked: Checks if there are no valid moves left in the hand.
+      Takes a Hand, a Board, uses canPlay function and returns a Bool.
+      Input:
+        - Hand: The current hand.
+        - Board: The current state of the game board.
+      Output:
+        - Bool: True if there are no valid moves left, otherwise False.
+    -}
     blocked :: Hand -> Board -> Bool
-    blocked hand board = all (\domino -> not (canPlay domino board)) hand
+    blocked [] _ = True
+    blocked hand board = not (any (\domino -> canPlay domino board L || canPlay domino board R) hand) 
 
     {-To check if a domino can be played on the board. Takes Domino and Board-}
     canPlay :: Domino -> Board -> End -> Bool
-    canPlay domino board end =
-      case board of
-        InitState -> True  -- Any domino can be played on an empty board
-        State left right _ ->
-          case end of
-            L -> domino `fitsLeft` left
-            R -> domino `fitsRight` right
+    canPlay _ InitState _ = True
+    canPlay dominoInHand (State domBoardL domBoardR _) end
+      | end == L && (fst dominoInHand == fst domBoardL || snd dominoInHand == fst domBoardL) = True
+      | end == R && (fst dominoInHand == snd domBoardR || snd dominoInHand == snd domBoardR) = True
+      | otherwise = False
 
+    {-
+      playDom: Attempts to play a domino on the board at a specified end.
+      Takes a Player, a Domino, a Board, an End, and returns a Maybe Board.
 
-    {- Check if the second domino matches the left end of the first -}
-    fitsLeft :: Domino -> Domino -> Bool
-    fitsLeft (l1, _) (r2, _) = l1 == r2
+      Input:
+        - Player: The current player (P1 or P2).
+        - Domino: The domino to be played.
+        - Board: The current state of the game board.
+        - End: The end of the board where the domino should be played.
 
-    {- Check if the second domino matches the right end of the first -}
-    fitsRight :: Domino -> Domino -> Bool
-    fitsRight (_, r1) (_, l2) = r1 == l2
-
-    {-which given a Player, Domino, a Board and an End, should play the domino at the given end if it is possible to play it there. 
-    The return type should be a Maybe Board-}   
+      Output:
+        - Maybe Board: Just the updated board if the move is valid, otherwise Nothing.
+          - The board is represented as a State containing the left and right dominos, and a history of moves.
+    -}
     playDom :: Player -> Domino -> Board -> End -> Maybe Board
-    playDom _ _ InitState _ = Just InitState  -- Any domino can be played on an empty board
+    playDom player domino InitState _ = Just (State domino domino [(domino, player, 1)]) -- Any domino can be played on an empty board
     playDom player domino (State left right history) end
-      | end == L && domino `fitsLeft` left = Just $ State domino right ((domino, player, length history + 1) : history)
-      | end == R && domino `fitsRight` right = Just $ State left domino ((domino, player, length history + 1) : history)
-      | otherwise = Nothing  -- Domino doesn't fit at the specified end
-    
+      | end == L && domino `fitsLeft` left = Just $ State domino right updatedHistory
+      | end ==L && dominoFlipped `fitsLeft` left = Just $ State dominoFlipped right updatedHistory -- adds the domino in the right place in the Board
+      | end == R && domino `fitsRight` right = Just $ State left domino updatedHistory
+      | end ==R && dominoFlipped `fitsRight` right = Just $ State  left dominoFlipped updatedHistory
+      | otherwise = Nothing
+      where
+        updatedHistory = (domino, player, length history + 1) : history
+        dominoFlipped = (snd domino, fst domino) -- Flips the domino to check if it fits
+
+    {- Check if a domino fits on the left end of the board-}
+    fitsLeft :: Domino -> Domino -> Bool
+    fitsLeft (domL, domR) (boardL, _) = domL == boardL || domR == boardL
+
+    {- Check if a domino fits on the right end of the board -}
+    fitsRight :: Domino -> Domino -> Bool
+    fitsRight (domL, domR) (_, boardR) = domL == boardR || domR == boardR
+
+    {-|
+      simplePlayer: A simple implementation of a Dominoes player that selects the first valid move.
+      Takes a Hand, a Board, a Player, and Scores, and returns a tuple containing the Domino to play and the End to play it on.
+
+      Input:
+        - Hand: The current player's hand.
+        - Board: The current state of the game board.
+        - Player: The current player (P1 or P2).
+        - Scores: The current scores of the players.
+
+      Output:
+        - Tuple: Contains the selected Domino to play and the End to play it on.
+          - If there are no valid moves, an error is thrown with the message "No valid moves!".
+    -}
     simplePlayer :: DomsPlayer
-    simplePlayer hand board player scores = (head hand, L)
+    simplePlayer [] _ _ _ = error "No valid moves!"
+    simplePlayer hand board _ _ = firstValidMove
+      where
+        validMoves = [(domino, end) | domino <- hand, end <- [L, R], canPlay domino board end]
+        firstValidMove = head $ take 1 validMoves
+
+    {-Determines the next move based on the current state, takes the hand and see the state of the board.
+    If it is a InitState and the player has (5,4), the player would straight away play that domino
+    Else, it would do the regularMoveStrategy-}
+    smartPlayer :: DomsPlayer
+    smartPlayer hand board player scores =
+      let doubleFiveFourPresent = any (== (5, 4)) hand
+      in case doubleFiveFourPresent of
+        True | board == InitState -> ((5,4), L)
+        _ -> regularMoveStrategy hand board
+
+    {-filters the possiblemoves that is a Multiple of Three or Five
+    If there is no possible moves, No moves would be made  -}
+    regularMoveStrategy :: Hand -> Board  -> (Domino,End)
+    regularMoveStrategy hand board =
+      case board of
+        InitState ->
+          let possibleMovesInit = [(domino, end) | domino <- hand, end <- [L, R]]
+              dominoesInit = [domino | (domino, end) <- possibleMovesInit]
+          in case possibleMovesInit of
+            [] -> error "No valid moves (initState) no possibleMoves!"  -- You might want to handle this differently
+            _  -> let (_, end) = head possibleMovesInit
+                      bestMove = findBestMove dominoesInit board
+                  in playDominoAtBestEnd bestMove board
+        _ ->
+          let possibleMoves = [(domino, end) |
+                                 domino <- hand,
+                                 canPlay domino board L || canPlay domino board R,
+                                 end <- [L, R]]
+              dominoes = [domino | (domino, end) <- possibleMoves]
+          in case possibleMoves of
+            [] -> error "No valid moves, no possible Moves!"
+            _  -> let (_, end) = head possibleMoves  -- Extract end from the first valid move
+                      bestMove = findBestMove dominoes  board
+                  in playDominoAtBestEnd bestMove board
+
+    {-Recursively searches through the possible moves to find the move that results in the highest score-}
+    findBestMove :: [Domino]  ->  Board -> Domino
+    findBestMove possibleMoves board =
+      let validMoves = filter (\domino ->isMultThreeFive board L domino||isMultThreeFive board R domino ||isMultThreeFive board L (swapDomino domino)||isMultThreeFive board R (swapDomino domino) ) possibleMoves
+      in case validMoves of
+        [] -> head possibleMoves
+        _ -> fst (findHighestScoreDomino allDominoes (length allDominoes) board)
+          where allDominoes = listDomino validMoves board
+
+    {-Takes a list of domioes and returns the best domino and end to play on the board in a list including the flipped side of the domino-}
+    listDomino :: [Domino] -> Board  -> [(Domino, End)]
+    listDomino [] _  = []  -- Base case: empty list results in an empty list of tuples
+    listDomino (domino:rest) board =
+      if canPlay domino board L || canPlay domino board R || canPlay (swapDomino domino) board L || canPlay (swapDomino domino) board R
+        then playDominoAtBestEnd domino board : playDominoAtBestEnd (swapDomino domino) board : listDomino rest board
+        else listDomino rest board
+
+
+    {-Checks whether a given move is a multiple of 3 or 5 on the current board and the player's hand-}
+    isMultThreeFive :: Board -> End -> Domino -> Bool
+    isMultThreeFive board end dominoToPlay =
+      let newScore = calculateTotalPip dominoToPlay board end
+      in newScore `mod` 3 == 0 || newScore `mod` 5 == 0
+
+    {-Calculates the new score for the player after playing a given move by calculating the total pip when a domino is played on a board-}
+    calculateTotalPip :: Domino -> Board -> End -> Int
+    calculateTotalPip dominoToPlay board end
+      | end == L = updatePipCountLeft board dominoToPlay
+      | end == R = updatePipCountRight board dominoToPlay
+      | otherwise = error "Invalid end"
+
+    {-This function updates the pip count for the left side of the board when a domino -}
+    updatePipCountLeft :: Board -> Domino -> Int
+    updatePipCountLeft InitState dominoToPlay = uncurry (+) dominoToPlay
+    updatePipCountLeft (State domBoardL domBoardR _) dominoToPlay =
+      case (isDouble dominoToPlay, isDouble domBoardR) of
+        (True, True) -> uncurry (+) dominoToPlay + fst domBoardR + snd domBoardR
+        (False, True) -> uncurry (+) domBoardR + fst dominoToPlay
+        (True, False) -> uncurry (+) dominoToPlay + snd domBoardR
+        (False, False) -> fst dominoToPlay + snd domBoardR
+
+    {-Updates the pip count for the right side of the board when a domino is played-}
+    updatePipCountRight :: Board -> Domino -> Int
+    updatePipCountRight InitState dominoToPlay = uncurry (+) dominoToPlay
+    updatePipCountRight (State domBoardL domBoardR _) dominoToPlay =
+      case (isDouble dominoToPlay, isDouble domBoardL) of
+        (True, True) -> uncurry (+) dominoToPlay + uncurry (+) domBoardL
+        (False, True) -> uncurry (+) dominoToPlay + fst domBoardL
+        (True, False) -> uncurry (+) domBoardL + snd dominoToPlay
+        (False, False) -> fst domBoardL + snd dominoToPlay
+
+    {- Recursively searches through a list of dominoes to find the domino that results in the highest score
+    the best end is determined from playDomino -}
+    findHighestScoreDomino :: [(Domino,End)] -> Int -> Board -> (Domino, End)
+    findHighestScoreDomino [] _ _ = error "No Dominoes"
+    findHighestScoreDomino ((domino,end):rest) recursionDepth board
+      | recursionDepth == 1 = (domino, end)
+      | recursionDepth <= 0 = error "recursion depth cannot be negative"
+      | currentScore >= bestRestScore = (domino,end)
+      | otherwise = bestRest
+      where
+        currentScore = calculateTotalPip domino board end
+        bestRest = findHighestScoreDomino  rest (recursionDepth - 1) board
+        bestRestScore = calculateTotalPip (fst bestRest) board (snd bestRest)
+
+
+    {-Determines the end of the board to play the domino on based the scoring strategy and to see which one is the highest-}
+    playDominoAtBestEnd :: Domino -> Board -> (Domino, End)
+    playDominoAtBestEnd dominoToPlay board =
+      --Calculates a score of playing a domino at a given end
+      let leftEndScore = calculateTotalPip dominoToPlay board L
+          rightEndScore = calculateTotalPip dominoToPlay board R
+          leftEndSwapScore = calculateTotalPip (swapDomino dominoToPlay) board L
+          rightEndSwapScore = calculateTotalPip (swapDomino dominoToPlay) board R
+      in
+        -- Choose an end based on the highest score
+        if leftEndScore >= rightEndScore && leftEndScore >= leftEndSwapScore && leftEndScore >= rightEndSwapScore && canPlay' dominoToPlay board L && isMultThreeFive board L dominoToPlay
+          then (dominoToPlay, L)
+          else if rightEndScore  >= leftEndScore  && rightEndScore >= leftEndSwapScore && rightEndScore >= rightEndSwapScore   && canPlay' dominoToPlay board R && isMultThreeFive board R dominoToPlay
+            then (dominoToPlay, R)
+            else if leftEndSwapScore  >= leftEndScore  && leftEndSwapScore >= rightEndScore && leftEndSwapScore >= rightEndSwapScore   && canPlay' (swapDomino dominoToPlay) board L && isMultThreeFive board L (swapDomino dominoToPlay)
+              then (swapDomino dominoToPlay,L)
+              else if rightEndSwapScore  >= leftEndScore  && rightEndSwapScore >= rightEndScore && rightEndSwapScore >= leftEndSwapScore   && canPlay' (swapDomino dominoToPlay) board R && isMultThreeFive board R (swapDomino dominoToPlay)
+                then (swapDomino dominoToPlay ,R)
+                --default move
+                else if canPlay' dominoToPlay board L
+                  then (dominoToPlay, L)
+                  else if canPlay' dominoToPlay board R
+                    then (dominoToPlay, R)
+                    else if canPlay' (swapDomino dominoToPlay) board L
+                      then (swapDomino dominoToPlay, L)
+                      else if canPlay' (swapDomino dominoToPlay) board R
+                        then (swapDomino dominoToPlay, R)
+                        else error "No valid Move!"
+
+    {-More specific whether a domino can be played on the board at the specified end
+    Doesn't handle swapDomino like canPlay-}
+    canPlay' :: Domino -> Board -> End -> Bool
+    canPlay' _ InitState _ = True
+    canPlay' dominoInHand (State domBoardL domBoardR _) end
+      | end == L &&  snd dominoInHand == fst domBoardL = True
+      | end == R && fst dominoInHand == snd domBoardR  = True
+      | otherwise = False
+
+    {- Helper function to swap the elements of a tuple and flips a domino to be played-}
+    swapDomino :: Domino -> Domino
+    swapDomino (x, y) = (y, x)
 
